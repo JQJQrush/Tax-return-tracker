@@ -13,3 +13,9 @@ __pycache__/
 backups/
 documents/
 data/
+
+server-settings.json
+*.pem
+*.key
+*.pfx
+*.log

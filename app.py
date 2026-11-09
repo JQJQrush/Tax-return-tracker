@@ -76,6 +76,7 @@ def connection():
     conn = sqlite3.connect(DATA / 'taxprep.sqlite3', timeout=30, factory=ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys=ON')
+    conn.execute('PRAGMA busy_timeout=30000')
     return conn
 
 
@@ -99,6 +100,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS feedback(id INTEGER PRIMARY KEY,client_id INTEGER REFERENCES clients(id),tester TEXT,
           area TEXT,severity TEXT,body TEXT,elapsed_seconds INTEGER,state TEXT DEFAULT 'open',created TEXT);
         ''')
+        if 'revision' not in {r[1] for r in db.execute('PRAGMA table_info(pages)')}:
+            db.execute('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 0')
         # Work interrupted by shutdown must never look complete.
         db.execute("UPDATE documents SET status='interrupted',error='上次处理被中断，可重新识别' WHERE status='processing'")
 
@@ -266,6 +269,42 @@ def export_client(client_id, reviewed_only=False):
             'reference_records':[r for r in records if r['role']=='reference'], 'review_checks':checks(records,pages,docs)}
 
 
+def build_backup():
+    # Snapshot the DB first; only copy immutable source/previews referenced by that snapshot.
+    with tempfile.TemporaryDirectory() as temp:
+        dbpath=Path(temp)/'taxprep.sqlite3'
+        source=connection()
+        try:
+            with sqlite3.connect(dbpath, factory=ClosingConnection) as dest: source.backup(dest)
+        finally: source.close()
+        with sqlite3.connect(dbpath, factory=ClosingConnection) as snap:
+            if snap.execute("SELECT 1 FROM documents WHERE status='processing'").fetchone():raise ValueError('请等当前文件识别完成后再备份')
+            docs=list(snap.execute('SELECT id,hash FROM documents'))
+            pages=list(snap.execute('SELECT document_id,page_number FROM pages'))
+        from restore_backup import MAX_TOTAL,MAX_FILE
+        selected=[dbpath]+[doc_dir(did)/'original.pdf' for did,_ in docs]+[doc_dir(did)/f'page-{number}.png' for did,number in pages]
+        selected += [doc_dir(did)/f'words-{number}.json' for did,number in pages if (doc_dir(did)/f'words-{number}.json').is_file()]
+        if any(not p.is_file() for p in selected):raise ValueError('原件或页面预览缺失，不能生成完整备份')
+        sizes=[p.stat().st_size for p in selected]
+        if len(selected)+1>20000 or sum(sizes)>MAX_TOTAL or any(size>MAX_FILE for size in sizes):raise ValueError('当前资料超过恢复支持的备份大小上限，请拆分资料目录后再备份')
+        output=io.BytesIO()
+        with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
+            archive.write(dbpath,'taxprep.sqlite3')
+            archive.writestr('backup-manifest.json',json.dumps({'format':'taxprep-local-backup','format_version':1,'app_version':SCHEMA_VERSION,'created_at':now()}))
+            for did,digest in docs:
+                original=doc_dir(did)/'original.pdf'
+                if not original.is_file():raise ValueError(f'文件 #{did} 原件缺失，不能生成完整备份')
+                if sha256(original.read_bytes())!=digest:raise ValueError(f'文件 #{did} 原件指纹不一致，不能生成完整备份')
+                archive.write(original,f'documents/{did}/original.pdf')
+            for did,number in pages:
+                image=doc_dir(did)/f'page-{number}.png'
+                if not image.is_file():raise ValueError(f'文件 #{did} 第 {number} 页预览缺失，不能生成完整备份')
+                archive.write(image,f'documents/{did}/page-{number}.png')
+                word_file=doc_dir(did)/f'words-{number}.json'
+                if word_file.is_file():archive.write(word_file,f'documents/{did}/words-{number}.json')
+        return output.getvalue()
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Never put filenames, source text or identity data in HTTP logs.
@@ -309,7 +348,7 @@ class Handler(BaseHTTPRequestHandler):
                 cid=int(query['client_id'][0])
                 with connection() as db:
                     docs=[dict(r) for r in db.execute('SELECT * FROM documents WHERE client_id=? ORDER BY id',(cid,))]
-                    pages=[dict(r) for r in db.execute('''SELECT p.id,p.document_id,p.page_number,p.method,p.rotation,p.error,p.disposition,p.reviewer,d.role,d.filename
+                    pages=[dict(r) for r in db.execute('''SELECT p.id,p.document_id,p.page_number,p.method,p.rotation,p.error,p.disposition,p.reviewer,p.revision,d.role,d.filename
                           FROM pages p JOIN documents d ON p.document_id=d.id WHERE d.client_id=? ORDER BY d.id,p.page_number''',(cid,))]
                     records=list_records(db,cid)
                     intake=[dict(r) for r in db.execute('SELECT * FROM intake WHERE client_id=? ORDER BY id',(cid,))]
@@ -359,40 +398,8 @@ class Handler(BaseHTTPRequestHandler):
                     history=[dict(r) for r in db.execute('SELECT id,event,before_json,after_json,created FROM audit WHERE record_id=? ORDER BY id DESC',(int(match[1]),))]
                 return self.send({'history':history,'notice':'仅显示此记录已保存的修改；页面用途变更请另核对当前页面状态。'})
             if path=='/api/backup':
-                # Snapshot the DB first; only copy immutable source/previews referenced by that snapshot.
-                with tempfile.TemporaryDirectory() as temp:
-                    dbpath=Path(temp)/'taxprep.sqlite3'
-                    source=connection()
-                    try:
-                        with sqlite3.connect(dbpath, factory=ClosingConnection) as dest: source.backup(dest)
-                    finally: source.close()
-                    with sqlite3.connect(dbpath, factory=ClosingConnection) as snap:
-                        if snap.execute("SELECT 1 FROM documents WHERE status='processing'").fetchone():raise ValueError('请等当前文件识别完成后再备份')
-                        docs=list(snap.execute('SELECT id,hash FROM documents'))
-                        pages=list(snap.execute('SELECT document_id,page_number FROM pages'))
-                    from restore_backup import MAX_TOTAL,MAX_FILE
-                    selected=[dbpath]+[doc_dir(did)/'original.pdf' for did,_ in docs]+[doc_dir(did)/f'page-{number}.png' for did,number in pages]
-                    selected += [doc_dir(did)/f'words-{number}.json' for did,number in pages if (doc_dir(did)/f'words-{number}.json').is_file()]
-                    if any(not p.is_file() for p in selected):raise ValueError('原件或页面预览缺失，不能生成完整备份')
-                    sizes=[p.stat().st_size for p in selected]
-                    if len(selected)+1>20000 or sum(sizes)>MAX_TOTAL or any(size>MAX_FILE for size in sizes):raise ValueError('当前资料超过恢复支持的备份大小上限，请拆分资料目录后再备份')
-                    output=io.BytesIO()
-                    with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
-                        archive.write(dbpath,'taxprep.sqlite3')
-                        archive.writestr('backup-manifest.json',json.dumps({'format':'taxprep-local-backup','format_version':1,'app_version':SCHEMA_VERSION,'created_at':now()}))
-                        for did,digest in docs:
-                            original=doc_dir(did)/'original.pdf'
-                            if not original.is_file():raise ValueError(f'文件 #{did} 原件缺失，不能生成完整备份')
-                            if sha256(original.read_bytes())!=digest:raise ValueError(f'文件 #{did} 原件指纹不一致，不能生成完整备份')
-                            archive.write(original,f'documents/{did}/original.pdf')
-                        for did,number in pages:
-                            image=doc_dir(did)/f'page-{number}.png'
-                            if not image.is_file():raise ValueError(f'文件 #{did} 第 {number} 页预览缺失，不能生成完整备份')
-                            archive.write(image,f'documents/{did}/page-{number}.png')
-                            word_file=doc_dir(did)/f'words-{number}.json'
-                            if word_file.is_file():archive.write(word_file,f'documents/{did}/words-{number}.json')
-                    return self.send(output.getvalue(),content_type='application/zip',
-                                     extra={'Content-Disposition':'attachment; filename="taxprep-local-backup.zip"'})
+                return self.send(build_backup(),content_type='application/zip',
+                                 extra={'Content-Disposition':'attachment; filename="taxprep-local-backup.zip"'})
             return self.send({'error':'页面不存在'},404)
         except (ValueError, KeyError) as exc:
             self.send({'error':str(exc)},400)
@@ -412,6 +419,9 @@ class Handler(BaseHTTPRequestHandler):
                                        query.get('role',['source'])[0],raw)
                 return self.send(result)
             data=json.loads(raw)
+            if getattr(self, 'user', None):
+                data['reviewer'] = self.user['username']
+                data['tester'] = self.user['username']
             if path=='/api/demo':
                 from demo import demo_documents
                 with connection() as db:
@@ -531,7 +541,9 @@ class Handler(BaseHTTPRequestHandler):
                 with connection() as db:
                     row=db.execute('SELECT * FROM pages WHERE id=?',(int(match[1]),)).fetchone()
                     if not row: raise ValueError('页面不存在')
-                    db.execute('UPDATE pages SET disposition=?,reviewer=? WHERE id=?',(disposition,reviewer,row['id']))
+                    if getattr(self, 'user', None) and data.get('revision') != row['revision']:
+                        return self.send({'error':'页面已被其他员工修改，请刷新后重试'},409)
+                    db.execute('UPDATE pages SET disposition=?,reviewer=?,revision=revision+1 WHERE id=?',(disposition,reviewer,row['id']))
                     db.execute('INSERT INTO audit(event,before_json,after_json,created) VALUES(?,?,?,?)',
                                ('page_disposition',json.dumps(dict(row)),json.dumps({'page_id':row['id'],**data}),now()))
                 return self.send({'saved':True})

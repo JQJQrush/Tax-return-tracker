@@ -25,7 +25,8 @@ if not errorlevel 1 goto launch
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 if errorlevel 1 goto failed
 :launch
-.venv\Scripts\python.exe app.py
+if not defined TAXPREP_DATA_DIR set "TAXPREP_DATA_DIR=%LOCALAPPDATA%\TaxPrepLocal"
+.venv\Scripts\python.exe server.py --data-dir "%TAXPREP_DATA_DIR%" --open-browser --setup-if-needed
 if errorlevel 1 goto failed
 exit /b 0
 :failed

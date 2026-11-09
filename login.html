@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · Tax Return Tracker</title>
+<style>body{background:#edf4ef;color:#193b39;font:16px/1.6 'Segoe UI',sans-serif;margin:0}main{max-width:360px;margin:12vh auto;padding:32px;background:white;border-radius:14px}label{display:block;margin-top:16px}input,button{box-sizing:border-box;width:100%;padding:12px;font:inherit;border:1px solid #b9cec3;border-radius:7px}button{background:#157565;color:white;margin-top:24px;cursor:pointer}p{font-size:14px}#error{color:#a23024;min-height:24px}@media(max-width:450px){main{margin:30px 15px}}</style>
+<main><h1>Tax Return Tracker</h1><p>登录办公室资料工作台。资料和识别任务统一保存在服务器。</p>
+<form id="login"><label for="username">员工账号</label><input id="username" name="username" autocomplete="username" required maxlength="64" autofocus>
+<label for="password">密码</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+<button id="submit">登录</button><p id="error" role="alert"></p></form><p>没有账号或忘记密码，请联系管理员。</p></main>
+<script>document.querySelector('#login').onsubmit=async e=>{e.preventDefault();const b=document.querySelector('#submit'),error=document.querySelector('#error');b.disabled=true;error.textContent='';try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});const data=await r.json();if(!r.ok)throw Error(data.error);location.replace('/')}catch(x){error.textContent=x.message}finally{b.disabled=false}};</script></html>

@@ -6,7 +6,7 @@ import json
 import re
 from decimal import Decimal, InvalidOperation
 
-SCHEMA_VERSION = '0.6'
+SCHEMA_VERSION = '0.7'
 # Only an initial supported subset; blank is not zero.
 FIELDS = {
     'W-2': [('wages', 'Box 1 工资'), ('federal_withheld', 'Box 2 联邦预扣'),
