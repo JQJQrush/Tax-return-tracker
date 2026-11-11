@@ -8,7 +8,7 @@
 
 1. 安装 Python 3.10 或更新版本，可同时安装 Python Launcher；启动脚本也支持 PATH 中的 python。官方入口：https://www.python.org/downloads/windows/
 2. 解压整个程序包到固定目录。不要直接在 ZIP 内双击运行。
-3. 双击 `run_windows.bat`。第一次需要联网安装 PyMuPDF；安装完成后会打开浏览器。
+3. 双击 `scripts/windows/run_windows.bat`。第一次需要联网安装 PyMuPDF；安装完成后会打开浏览器。
 4. 点击“载入合成演示资料”可以先练习，无需真实客户文件或 OCR。
 5. 浏览器地址是 `http://127.0.0.1:8765`。保留命令行窗口，关闭它会停止程序。
 
@@ -19,7 +19,7 @@ https://tesseract-ocr.github.io/tessdoc/Installation.html#windows
 
 ```bat
 set "TESSERACT_CMD=D:\Tools\Tesseract-OCR\tesseract.exe"
-run_windows.bat
+scripts/windows/run_windows.bat
 ```
 
 没有 OCR 也能启动、查看原页、读取数字 PDF、手工录入和导出。安装 OCR 后点击“继续识别缺失页”，不会覆盖已有记录；如果某页已经建立记录，需另建测试工作区重新上传以重新验证 OCR。
@@ -62,12 +62,12 @@ run_windows.bat
 ## 数据位置、备份与恢复
 
 - Windows 默认：`%LOCALAPPDATA%\TaxPrepLocal`；数据库是 `taxprep.sqlite3`，原始 PDF 和预览在 `documents`。
-- 修改位置：启动前设置 `TAXPREP_DATA_DIR`，或 `python app.py --data-dir D:\TaxPrepData`。
+- 修改位置：启动前设置 `TAXPREP_DATA_DIR`，或 `python -m taxtracker.runtime.app --data-dir D:\TaxPrepData`。
 - 程序只绑定 127.0.0.1，不应改成面向局域网/公网的服务。当前没有员工账户体系；审核人只是记录姓名/代号，不能证明真实登录身份。程序以进程锁阻止两个实例同时使用同一数据目录。
 - 处理客户资料不调用云端 OCR、模型或其他网络服务。首次安装依赖需要联网。
 - 本机数据和导出/备份未加密，使用电脑已有的磁盘加密和文件访问控制。备份包含完整原件和修改历史。
-- 恢复时双击 `restore_windows.bat`，选择资料备份 ZIP，再选择一个父目录；工具会验证并创建新的恢复目录，不覆盖现有数据。恢复完成后先关闭旧程序，再双击恢复目录中的 `start_restored.bat`。
-- 也可只检查备份：`python -X utf8 -m taxtracker.operations.restore_backup --backup backup.zip --check-only`。命令行恢复：`python -X utf8 -m taxtracker.operations.restore_backup --backup backup.zip --destination D:\TaxPrepRestored`，然后 `python app.py --data-dir D:\TaxPrepRestored`。
+- 恢复时双击 `scripts/windows/restore_windows.bat`，选择资料备份 ZIP，再选择一个父目录；工具会验证并创建新的恢复目录，不覆盖现有数据。恢复完成后先关闭旧程序，再双击恢复目录中的 `start_restored.bat`。
+- 也可只检查备份：`python -X utf8 -m taxtracker.operations.restore_backup --backup backup.zip --check-only`。命令行恢复：`python -X utf8 -m taxtracker.operations.restore_backup --backup backup.zip --destination D:\TaxPrepRestored`，然后 `python -m taxtracker.runtime.app --data-dir D:\TaxPrepRestored`。
 - 恢复会核对 ZIP 路径、数据库完整性、原始 PDF 指纹和页面预览；支持旧版无清单的资料备份。程序安装包不是资料备份。
 - 正在识别时暂不生成备份，待识别完成后再点。已中断/失败任务可随已有记录备份，恢复后继续识别。本版备份/恢复上限为 2GB、20000 个文件、单文件 128MB。
 - Windows 恢复窗口依赖 Python 的 Tcl/Tk。没有图形组件时可使用上述命令行方式。新目录的启动脚本指向当前程序文件夹，移动程序后可改用 `--data-dir` 启动。
@@ -76,10 +76,10 @@ run_windows.bat
 ## 从旧版升级
 
 1. 在旧版下载“备份全部工作资料”，然后停止旧版命令行窗口。
-2. 将 v0.6 解压到新目录，再运行新目录里的 `run_windows.bat`。默认数据目录不变，旧资料和审核结果会保留；首次启动自动补充缺少的表，v0.6 新增应交资料表。
+2. 将 v0.6 解压到新目录，再运行新目录里的 `scripts/windows/run_windows.bat`。默认数据目录不变，旧资料和审核结果会保留；首次启动自动补充缺少的表，v0.6 新增应交资料表。
 3. 不要同时运行旧版和新版。若提示数据目录正在使用，先关闭旧程序。
 4. 旧页面不会自动重写。待核对记录可点击“重新提取（仅补空白）”；手填金额保留。已审核记录需先另存待核对，再获取新建议，且仍需人工确认。
-5. 安装问题可双击 `check_windows.bat`，查看 Python、PyMuPDF、OCR 和语言数据状态。
+5. 安装问题可双击 `scripts/windows/check_windows.bat`，查看 Python、PyMuPDF、OCR 和语言数据状态。
 
 本程序不需要 OpenAI API Key 或激活码。ProSeries 是另外的软件，本工具尚未连接它。
 
@@ -87,16 +87,16 @@ run_windows.bat
 
 ```sh
 python -m venv .venv
-# Windows: .venv\Scripts\python.exe -m pip install -r requirements.txt
-# macOS/Linux: .venv/bin/python -m pip install -r requirements.txt
-python -m pip install -r requirements.txt
-python app.py --no-browser --port 8765
+# Windows: .venv\Scripts\python.exe -m pip install -r taxtracker/requirements.txt
+# macOS/Linux: .venv/bin/python -m pip install -r taxtracker/requirements.txt
+python -m pip install -r taxtracker/requirements.txt
+python -m taxtracker.runtime.app --no-browser --port 8765
 python -m unittest discover -s tests -v
 ```
 
-更换端口：`python app.py --port 8766`。运行环境已测试 Python 3.12.14、PyMuPDF 1.26.6、Tesseract 5.3.4；Windows 启动脚本尚未在真实 Windows 电脑执行验收。
+更换端口：`python -m taxtracker.runtime.app --port 8766`。运行环境已测试 Python 3.12.14、PyMuPDF 1.26.6、Tesseract 5.3.4；Windows 启动脚本尚未在真实 Windows 电脑执行验收。
 
-源码：根目录的 `app.py` 和 `server.py` 是启动入口。业务模块按用途放在 `taxtracker/` 下，`tests/` 保存自动测试，`docs/testing/` 保存测试报告。
+源码：`taxtracker/runtime/` 中的 `app.py` 和 `server.py` 是启动入口。业务模块按用途放在 `taxtracker/` 下，`tests/` 保存自动测试，`docs/testing/` 保存测试报告。
 
 ## 官方资料参考
 

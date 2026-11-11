@@ -15,8 +15,8 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from taxtracker.operations import accounts
-import app
-import server
+from taxtracker.runtime import app
+from taxtracker.runtime import server
 from taxtracker.operations.restore_backup import restore
 
 PASSWORD = 'Synthetic-test-password-2026'

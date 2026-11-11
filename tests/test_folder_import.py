@@ -2,7 +2,7 @@ import tempfile,unittest,sys
 from pathlib import Path
 import pymupdf
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import app
+from taxtracker.runtime import app
 from taxtracker.clients import crm
 from taxtracker.clients import folder_import
 

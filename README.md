@@ -25,7 +25,7 @@ flowchart LR
 
 ## 启动和部署
 
-在 Windows 工作站双击 `run_windows.bat`。首次启动按提示设置管理员密码。默认资料目录为 `%LOCALAPPDATA%\TaxPrepLocal`。建议使用合成演示资料或独立的测试资料目录验证流程。详见[工作站安装说明](docs/deployment/INSTALLATION.md)和[本机使用指南](docs/guides/LOCAL_GUIDE.md)。
+在 Windows 工作站双击 `scripts/windows/run_windows.bat`。首次启动按提示设置管理员密码。默认资料目录为 `%LOCALAPPDATA%\TaxPrepLocal`。建议使用合成演示资料或独立的测试资料目录验证流程。详见[工作站安装说明](docs/deployment/INSTALLATION.md)和[本机使用指南](docs/guides/LOCAL_GUIDE.md)。
 
 办公室服务器的 HTTPS、开机启动、账号、备份和恢复配置见[服务器部署指南](docs/deployment/SERVER_GUIDE.md)。管理员管理账号和备份，编辑员工负责导入和核对，只读员工可以查看。当前启用的员工账号共享客户列表，负责人用于分工。
 
@@ -40,10 +40,10 @@ flowchart LR
 | [测试记录](docs/testing/TESTING.md) | 功能测试与验证范围 |
 | [回归报告](docs/testing/CRM-regression-report-2026-11-11.md) | 一次真实资料导入的脱敏结果及待改进项 |
 
-代码位于 `taxtracker/`，按用途分为客户与资料管理（`clients`）、表格与提取（`documents`）、审核与底稿（`verification`）、账号和运维工具（`operations`）。根目录保留 Windows 启动入口。自动测试放在 `tests/`，测试报告放在 `docs/testing/`。
+代码位于 `taxtracker/`，按用途分为客户与资料管理（`clients`）、表格与提取（`documents`）、审核与底稿（`verification`）、账号和运维工具（`operations`）。Windows 启动入口位于 `scripts/windows/`。自动测试放在 `tests/`，测试报告放在 `docs/testing/`。
 
 Windows 开发环境可运行以下命令执行自动测试。
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\scripts\windows\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```

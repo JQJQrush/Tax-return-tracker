@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from taxtracker.operations import instance
-import server
+from taxtracker.runtime import server
 
 
 class InstanceTests(unittest.TestCase):
@@ -18,9 +18,9 @@ class InstanceTests(unittest.TestCase):
             previous=server.app.DATA
             try:
                 with patch('sys.argv',['server.py','--data-dir',folder,'--open-browser']), \
-                     patch('server.app.acquire_data_lock',side_effect=ValueError('locked')), \
-                     patch('server.instance.active_url',return_value='http://127.0.0.1:8765'), \
-                     patch('server.webbrowser.open') as browser,patch('server.app.init_db') as init:
+                     patch('taxtracker.runtime.server.app.acquire_data_lock',side_effect=ValueError('locked')), \
+                     patch('taxtracker.runtime.server.instance.active_url',return_value='http://127.0.0.1:8765'), \
+                     patch('taxtracker.runtime.server.webbrowser.open') as browser,patch('taxtracker.runtime.server.app.init_db') as init:
                     server.main()
                     browser.assert_called_once_with('http://127.0.0.1:8765');init.assert_not_called()
             finally:server.app.DATA=previous

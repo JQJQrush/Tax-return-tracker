@@ -15,8 +15,8 @@ import urllib.request
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from taxtracker.operations import accounts
-import app
-import server
+from taxtracker.runtime import app
+from taxtracker.runtime import server
 
 OPENSSL = shutil.which('openssl')
 if not OPENSSL and Path(r'C:\Program Files\Git\usr\bin\openssl.exe').is_file():

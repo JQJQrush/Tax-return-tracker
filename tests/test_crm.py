@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import app
+from taxtracker.runtime import app
 from taxtracker.clients import crm
 from taxtracker.operations import restore_backup
 

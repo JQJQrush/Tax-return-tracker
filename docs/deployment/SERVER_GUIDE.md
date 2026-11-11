@@ -1,17 +1,17 @@
 # Windows Server 部署与测试
 
-本版本用于一台服务器上的小团队办公室内网。服务器承担全部识别、保存、数据库更新和程序更新；员工通过浏览器使用同一个地址。只运行一个 `server.py` 进程。请勿把 8765 端口转发到公网；异地访问应先接入办公室 VPN。
+本版本用于一台服务器上的小团队办公室内网。服务器承担全部识别、保存、数据库更新和程序更新；员工通过浏览器使用同一个地址。只运行一个 `taxtracker.runtime.server` 进程。请勿把 8765 端口转发到公网；异地访问应先接入办公室 VPN。
 
 ## 1. 本机快速验收
 
-1. 关闭旧程序，双击 `run_windows.bat`。沿用 `%LOCALAPPDATA%\TaxPrepLocal`，或事先用 `TAXPREP_DATA_DIR` 指定程序目录之外的新测试目录。
+1. 关闭旧程序，双击 `scripts/windows/run_windows.bat`。沿用 `%LOCALAPPDATA%\TaxPrepLocal`，或事先用 `TAXPREP_DATA_DIR` 指定程序目录之外的新测试目录。
 2. 首次启动提示创建应用管理员 `admin`，输入并确认至少 12 字符的密码。密码不回显，也没有预设密码。
 3. 网页打开后登录，进入“员工与服务器管理”，新建 `editor` 和 `viewer` 员工。
 4. 使用普通/无痕窗口分别登录，用“载入合成演示资料”测试。不同窗口用相同浏览器配置会共享登录 Cookie；请使用独立配置或无痕窗口来区分员工。
 5. 在两个编辑账号中打开同一条记录。甲保存后，乙从旧表单保存应收到冲突提示；乙需重新选择原页或刷新网页，核对最新内容后再编辑。仅后台轮询不会改写未保存表单。
 6. 同样验证页面用途和应交资料项目的冲突。只读账号不能上传、保存、运行识别或管理员工，直接调用接口也会被拒绝。
 
-`run_windows.bat` 是本机验收入口。正式服务器使用下述 `setup_server.ps1` / `start_server.ps1`，员工电脑只需保存网页快捷方式。
+`scripts/windows/run_windows.bat` 是本机验收入口。正式服务器使用下述 `setup_server.ps1` / `start_server.ps1`，员工电脑只需保存网页快捷方式。
 
 ## 2. 服务器目录和迁移
 
@@ -29,7 +29,7 @@
 迁移旧版资料：先停止上传/编辑并等 OCR 完成，下载旧版“备份全部工作资料”。在服务器恢复至**新的空目录**：
 
 ```powershell
-.\.venv\Scripts\python.exe -X utf8 -m taxtracker.operations.restore_backup --backup D:\Transfer\backup.zip --destination D:\TaxTrackerData
+.\scripts\windows\.venv\Scripts\python.exe -X utf8 -m taxtracker.operations.restore_backup --backup D:\Transfer\backup.zip --destination D:\TaxTrackerData
 ```
 
 然后以此目录运行服务器安装。首次启动会补充账号及页面修订字段，保留客户资料和原有核对结果。旧版填写的审核人文本作为历史保留；服务器版新修改的审核人使用真实登录账号。升级前保留原备份和旧程序，不要同时运行两套程序访问同一目录。
@@ -43,7 +43,7 @@
 在服务器管理员 PowerShell 中，从仓库执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_server.ps1 -DataDir D:\TaxTrackerData -ListenAddress 0.0.0.0 -HostName taxserver.office.example -Port 8765 -Certificate D:\TrackerTLS\server-chain.pem -PrivateKey D:\TrackerTLS\server-key.pem -InstallStartupTask
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\setup_server.ps1 -DataDir D:\TaxTrackerData -ListenAddress 0.0.0.0 -HostName taxserver.office.example -Port 8765 -Certificate D:\TrackerTLS\server-chain.pem -PrivateKey D:\TrackerTLS\server-key.pem -InstallStartupTask
 ```
 
 脚本安装 Python 依赖，提示设置应用 `admin` 密码，生成本机 `server-settings.json`，并在指定时创建 `TaxReturnTracker` 开机任务。重复执行会重置应用 `admin` 密码并替换同名任务，须先停止运行中的程序。
@@ -55,7 +55,7 @@ Windows 文件权限由服务器管理员设置：仅服务账号、受信任的
 手动启动：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\start_server.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\start_server.ps1
 ```
 
 或使用已安装的开机任务：
@@ -73,15 +73,15 @@ Get-ScheduledTaskInfo -TaskName TaxReturnTracker
 New-NetFirewallRule -DisplayName 'Tax Return Tracker LAN' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8765 -RemoteAddress 192.168.1.0/24 -Profile Domain,Private
 ```
 
-员工打开 `https://taxserver.office.example:8765`。浏览器出现证书错误时应修复名称/证书信任，不要忽略错误。`--allowed-host` 必须与浏览器地址中的名称和端口完全一致；直接使用 `server.py` 可重复传入多个允许地址。安装脚本配置单一主地址。
+员工打开 `https://taxserver.office.example:8765`。浏览器出现证书错误时应修复名称/证书信任，不要忽略错误。`--allowed-host` 必须与浏览器地址中的名称和端口完全一致；直接使用 `taxtracker.runtime.server` 可重复传入多个允许地址。安装脚本配置单一主地址。
 
 ## 4. 没有证书时的合成数据内网测试
 
 仅为联通性测试，可以显式允许明文 HTTP，并且只使用合成资料和测试密码：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_server.ps1 -DataDir D:\TaxTrackerTestData -ListenAddress 0.0.0.0 -HostName 192.168.1.20 -InsecureTestHttp
-powershell -NoProfile -ExecutionPolicy Bypass -File .\start_server.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\setup_server.ps1 -DataDir D:\TaxTrackerTestData -ListenAddress 0.0.0.0 -HostName 192.168.1.20 -InsecureTestHttp
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\start_server.ps1
 ```
 
 访问 `http://192.168.1.20:8765`。真实客户资料使用正式 HTTPS 配置。HTTP 测试不设置 Secure Cookie；HTTPS 自动设置，不能通过伪造转发头开启或关闭。
@@ -98,7 +98,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start_server.ps1
 忘记管理员密码：在服务器停止程序后运行下述命令，以交互方式重置（不要把密码放在命令行或 Git 中）：
 
 ```powershell
-.\.venv\Scripts\python.exe server.py --data-dir D:\TaxTrackerData --set-user admin --role admin
+.\scripts\windows\.venv\Scripts\python.exe -m taxtracker.runtime.server --data-dir D:\TaxTrackerData --set-user admin --role admin
 ```
 
 ## 6. 备份、恢复和中央更新
@@ -113,8 +113,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start_server.ps1
 
 1. 通知员工保存并退出，等待 OCR 完成，生成并验证完整备份。
 2. 停止手动启动的程序（Ctrl+C），或 `Stop-ScheduledTask -TaskName TaxReturnTracker`。任务停止是进程终止，因此必须先等识别和编辑完成。
-3. 在仓库执行 `git pull --ff-only`，再执行 `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`。
-4. 执行 `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`，通过后启动原任务。
+3. 在仓库执行 `git pull --ff-only`，再执行 `.\scripts\windows\.venv\Scripts\python.exe -m pip install -r taxtracker/requirements.txt`。
+4. 执行 `.\scripts\windows\.venv\Scripts\python.exe -m unittest discover -s tests -v`，通过后启动任务。如果旧任务仍指向根目录的脚本，在任务计划程序中将启动脚本改为 `scripts/windows/start_server.ps1`，保留原来的运行账户及配置参数。
 5. 员工重新打开网页并登录，检查版本和客户资料。员工电脑无需 pull、安装依赖或升级程序。
 
 升级失败时，先停止新程序，使用旧程序及升级前备份恢复到新资料目录，再修改配置指向恢复目录。不要把旧代码直接用于已经发生不兼容升级的数据库。

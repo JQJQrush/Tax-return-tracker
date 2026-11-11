@@ -26,7 +26,8 @@ from taxtracker.verification.handoff import build_handoff
 from taxtracker.verification.review import checks
 from taxtracker.verification.workpaper import render_workpaper
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
+WEB_ROOT = ROOT / "taxtracker" / "web"
 TOKEN = secrets.token_urlsafe(32)
 POOL = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 DATA = Path(os.environ.get('TAXPREP_DATA_DIR', str(Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'TaxPrepLocal')))
@@ -355,7 +356,7 @@ class Handler(BaseHTTPRequestHandler):
             self.guarded()
             parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query)
             if path=='/':
-                html=(ROOT/'index.html').read_text(encoding='utf-8').replace('__LOCAL_TOKEN__',TOKEN)
+                html=(WEB_ROOT/'index.html').read_text(encoding='utf-8').replace('__LOCAL_TOKEN__',TOKEN)
                 return self.send(html.encode(),content_type='text/html; charset=utf-8')
             if path=='/api/config':
                 return self.send({'fields':FIELDS,'ocr_available':bool(tesseract_path()),'version':SCHEMA_VERSION})

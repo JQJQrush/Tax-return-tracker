@@ -14,7 +14,7 @@ def main():
     import msvcrt
     try:msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
     except OSError:lock.close();return
-    root=Path(__file__).resolve().parent
+    root=Path(__file__).resolve().parents[2]
     def event(kind,**extra):
         row={'time':datetime.datetime.now(datetime.timezone.utc).isoformat(),'event':kind,'supervisor_pid':os.getpid(),**extra}
         with (logs/'supervisor.jsonl').open('a',encoding='utf-8') as f:f.write(json.dumps(row)+'\n')
@@ -26,7 +26,7 @@ def main():
             today=datetime.datetime.now().strftime('%Y-%m-%d')
             with (logs/('server-'+today+'.log')).open('ab',buffering=0) as output:
                 env=dict(os.environ,PYTHONUNBUFFERED='1',PYTHONIOENCODING='utf-8')
-                process=subprocess.Popen([str(root/'.venv/Scripts/python.exe'),'-u',str(root/'server.py'),'--data-dir',str(data),'--port','8765'],cwd=root,stdout=output,stderr=subprocess.STDOUT,env=env,creationflags=subprocess.CREATE_NO_WINDOW)
+                process=subprocess.Popen([str(Path(sys.executable).with_name('python.exe')),'-u','-m','taxtracker.runtime.server','--data-dir',str(data),'--port','8765'],cwd=root,stdout=output,stderr=subprocess.STDOUT,env=env,creationflags=subprocess.CREATE_NO_WINDOW)
                 event('server_started',server_pid=process.pid)
                 code=process.wait()
                 event('server_exited',server_pid=process.pid,exit_code=code)

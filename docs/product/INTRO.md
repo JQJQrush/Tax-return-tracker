@@ -31,4 +31,4 @@ v0.6 以 2025 税务年度的示例验证为起点，自动识别和金额检查
 
 ## 快速体验
 
-在 Windows 中双击 `run_windows.bat`，进入界面后点击“载入合成演示资料”，即可用示例走一遍核对流程。安装、OCR 配置和备份恢复步骤见 [README.md](../../README.md)。
+在 Windows 中双击 `scripts/windows/run_windows.bat`，进入界面后点击“载入合成演示资料”，即可用示例走一遍核对流程。安装、OCR 配置和备份恢复步骤见 [README.md](../../README.md)。

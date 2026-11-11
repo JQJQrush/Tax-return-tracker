@@ -13,7 +13,7 @@ import webbrowser
 from urllib.parse import urlparse, parse_qs
 
 from taxtracker.operations import accounts
-import app
+from taxtracker.runtime import app
 from taxtracker.clients import crm
 from taxtracker.operations import instance
 
@@ -126,10 +126,10 @@ class Handler(app.Handler):
             if path == '/api/instance':
                 return self.send({'product':instance.PRODUCT,'instance_id':getattr(self.server,'instance_id',None)})
             if path == '/login':
-                return self.send((app.ROOT/'login.html').read_bytes(), content_type='text/html; charset=utf-8')
+                return self.send((app.WEB_ROOT/'login.html').read_bytes(), content_type='text/html; charset=utf-8')
             if path in ('/', '/admin', '/workspace'):
                 filename = {'/':'crm.html','/admin':'admin.html','/workspace':'index.html'}[path]
-                html = (app.ROOT/filename).read_text(encoding='utf-8').replace('__LOCAL_TOKEN__', self.user['csrf'])
+                html = (app.WEB_ROOT/filename).read_text(encoding='utf-8').replace('__LOCAL_TOKEN__', self.user['csrf'])
                 return self.send(html.encode(), content_type='text/html; charset=utf-8')
             if path in ('/api/crm/trash','/api/crm/delete-preview'):
                 query=parse_qs(urlparse(self.path).query)

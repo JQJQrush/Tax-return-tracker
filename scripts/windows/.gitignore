@@ -1,0 +1,8 @@
+.venv/
+local-runtime.json
+server-settings.json
+.env
+.env.*
+*.pem
+*.key
+*.pfx

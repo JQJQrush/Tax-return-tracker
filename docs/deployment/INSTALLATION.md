@@ -1,6 +1,6 @@
 # 本机正式启动位置
 
-程序统一保存在 `D:\Tax-return-tracker`，双击其中的 `run_windows.bat` 或桌面 `Tax Return Tracker` 快捷方式。
+程序统一保存在 `D:\Tax-return-tracker`，双击其中的 `scripts/windows/run_windows.bat` 或桌面 `Tax Return Tracker` 快捷方式。
 
 现有客户资料继续保存在 `%LOCALAPPDATA%\TaxPrepLocal`，与程序目录分开；迁移程序不新建空数据库、不重置员工密码。目录包括客户数据库、上传原件、页面图片和审核记录。
 
