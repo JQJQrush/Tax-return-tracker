@@ -2,8 +2,9 @@
 import hashlib,json
 from pathlib import Path
 import pymupdf
-import app,crm
-from core import classify
+import app
+from taxtracker.clients import crm
+from taxtracker.documents.core import classify
 
 
 def run(cid,files,actor):

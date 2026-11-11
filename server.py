@@ -12,10 +12,10 @@ import threading
 import webbrowser
 from urllib.parse import urlparse, parse_qs
 
-import accounts
+from taxtracker.operations import accounts
 import app
-import crm
-import instance
+from taxtracker.clients import crm
+from taxtracker.operations import instance
 
 WRITE_LOCK = threading.RLock()
 
@@ -189,7 +189,7 @@ class Handler(app.Handler):
         if urlparse(self.path).path == '/api/crm/preview-folder':
             try:
                 self.guarded();data=self.read_json()
-                from folder_client import folder_info
+                from taxtracker.clients.folder_client import folder_info
                 info=folder_info(data.get('source_path',''))
                 return self.send({'files':[{'name':f['name'],'type':'PDF' if f['name'].lower().endswith('.pdf') else '图片'} for f in info['files']]})
             except AccessError as exc:return self.send({'error':exc.message},exc.status)
@@ -199,8 +199,8 @@ class Handler(app.Handler):
                 self.guarded();data=self.read_json();cid=int(data['client_id'])
                 with app.connection() as db:client=crm.detail(db,cid)
                 if not client['source_path']:raise ValueError('请先保存原始资料文件夹路径')
-                from folder_client import folder_info
-                import folder_import
+                from taxtracker.clients.folder_client import folder_info
+                from taxtracker.clients import folder_import
                 info=folder_info(client['source_path'])
                 folder_import.enqueue(cid,info['files'],self.user['username'])
                 return self.send({'queued':True,'files':len(info['files'])})
@@ -215,7 +215,7 @@ class Handler(app.Handler):
                 path=str(data.get('source_path','')).strip()
                 if not data.get('contact_id') and not name and not path:raise ValueError('客户姓名和资料文件夹路径至少填写一项')
                 if path:
-                    from folder_client import folder_info
+                    from taxtracker.clients.folder_client import folder_info
                     info=folder_info(path,read_name=not name and not data.get('contact_id'),engine=app.tesseract_path())
                     data['_folder_info']=info
                     if not name:data['name']=info['name']
@@ -225,7 +225,7 @@ class Handler(app.Handler):
                         db.execute('BEGIN IMMEDIATE')
                         result=crm.create(db,data,self.user['username'])
                     if data.get('_folder_info'):
-                        import folder_import
+                        from taxtracker.clients import folder_import
                         folder_import.enqueue(result['id'],data['_folder_info']['files'],self.user['username'])
                 return self.send(result)
             except AccessError as exc:return self.send({'error':exc.message},exc.status)

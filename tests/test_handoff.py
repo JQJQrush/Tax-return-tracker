@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from handoff import build_handoff
+from taxtracker.verification.handoff import build_handoff
 
 class HandoffTests(unittest.TestCase):
     def build(self, records=None, pages=None, docs=None, report=None):

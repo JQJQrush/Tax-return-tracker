@@ -2,8 +2,8 @@ import sys
 from pathlib import Path
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from intake import validate_item,reminder
-from handoff import build_handoff
+from taxtracker.clients.intake import validate_item,reminder
+from taxtracker.verification.handoff import build_handoff
 
 class IntakeTests(unittest.TestCase):
     def item(self,**kw):return dict(label='W-2 <test>',owner='taxpayer',state='missing',notes='',reviewer='QA',**kw)

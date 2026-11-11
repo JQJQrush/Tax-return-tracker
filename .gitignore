@@ -12,9 +12,11 @@ __pycache__/
 *.zip
 backups/
 documents/
+!/taxtracker/documents/
 data/
 
 server-settings.json
+local-runtime.json
 *.pem
 *.key
 *.pfx

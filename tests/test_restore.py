@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import app
 import pymupdf as fitz
-from restore_backup import restore
+from taxtracker.operations.restore_backup import restore
 
 class RestoreTests(unittest.TestCase):
  def setUp(self):

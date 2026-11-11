@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler,HTTPServer
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import instance
+from taxtracker.operations import instance
 import server
 
 
@@ -49,5 +49,5 @@ class InstanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             for url in ['http://example.com','file:///test','http://localhost@evil.example','http://localhost/?secret=1']:
                 (Path(folder)/'server-instance.json').write_text(json.dumps({'url':url,'instance_id':'a'*48}))
-                with patch('instance.build_opener') as opener:
+                with patch.object(instance,'build_opener') as opener:
                     self.assertIsNone(instance.active_url(folder));opener.assert_not_called()

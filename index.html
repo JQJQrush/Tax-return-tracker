@@ -77,5 +77,13 @@ $('#logout').onclick=async()=>{if(!canLeave())return;try{await post('/api/logout
 $('#change-password').onclick=()=>$('#password-dialog').showModal();
 $('#password-form').onsubmit=async e=>{e.preventDefault();const f=e.target;if(f.elements.password.value!==f.elements.confirm.value){toast('两次新密码不一致');return}try{await post('/api/password',{old_password:f.elements.old_password.value,password:f.elements.password.value});f.reset();dirty=false;location.replace('/login')}catch(x){toast(x.message)}};
 
-(async()=>{try{config=await api('/api/config');setupAccount();$('#ocr-note').classList.toggle('hidden',config.ocr_available);await loadClients();const params=new URLSearchParams(location.search);if(params.get('section')==='intake'){$('#intake-panel').open=true;$('#intake-panel').scrollIntoView()}if(params.get('document_id')){$('#doc-filter').value=params.get('document_id');renderList();const first=state.pages.find(p=>String(p.document_id)===params.get('document_id'));if(first)await selectPage(first.id)}setInterval(async()=>{try{const hadPages=state.pages.length;await refresh();if(!pageId&&state.pages.length&&!dirty)await selectPage(state.pages[0].id)}catch{}},4500)}catch(e){toast(e.message)}})();
+(async()=>{try{config=await api('/api/config');setupAccount();$('#ocr-note').classList.toggle('hidden',config.ocr_available);await loadClients();const params=new URLSearchParams(location.search);if(params.get('section')==='intake'){$('#intake-panel').open=true;$('#intake-panel').scrollIntoView()}if(params.get('document_id')){$('#doc-filter').value=params.get('document_id');renderList();const first=state.pages.find(p=>String(p.document_id)===params.get('document_id'));if(first)await selectPage(first.id)}
+const requestedRecord=Number(params.get('record_id'));
+const requestedPage=Number(params.get('page_id'));
+if(requestedRecord&&state.records.some(record=>record.id===requestedRecord)){
+    await openRecord(requestedRecord);
+}else if(requestedPage&&state.pages.some(page=>page.id===requestedPage)){
+    await selectPage(requestedPage);
+}
+setInterval(async()=>{try{const hadPages=state.pages.length;await refresh();if(!pageId&&state.pages.length&&!dirty)await selectPage(state.pages[0].id)}catch{}},4500)}catch(e){toast(e.message)}})();
 </script></body></html>

@@ -124,6 +124,44 @@ function filingDestination(type, year){
     return destinations[type]||(type.startsWith('Schedule ')?'已识别的申报附表':'待确认申报位置');
 }
 
+function renderReviewQueue(data,client){
+    const issuesByRecord=new Map();
+    const issuesByPage=new Map();
+    for(const issue of data.checks?.issues||[]){
+        if(!['error','warning'].includes(issue.severity))continue;
+        const target=issue.record_id?issuesByRecord:issuesByPage;
+        const id=issue.record_id||issue.page_id;
+        if(!id)continue;
+        if(!target.has(id))target.set(id,[]);
+        target.get(id).push(issue.message);
+    }
+    const rows=[];
+    for(const record of data.records){
+        if(record.role!=='source'||record.status==='excluded'||record.disposition==='excluded')continue;
+        const reasons=[...new Set(issuesByRecord.get(record.id)||[])];
+        if(!record.owner||record.owner==='unknown')reasons.push('归属待确认');
+        if(record.status!=='reviewed'){
+            const blanks=(config.fields[record.form_type]||[]).filter(([key])=>record.values?.[key]==null||record.values[key]==='');
+            if(blanks.length)reasons.push('待核对空白字段：'+blanks.map(([,label])=>label).join('、'));
+            else reasons.push('金额待核对');
+        }
+        if(reasons.length)rows.push({label:record.form_type,filename:record.filename,page:record.page_number,pageId:record.page_id,recordId:record.id,reasons});
+    }
+    for(const page of data.pages){
+        if(page.disposition==='excluded')continue;
+        const reasons=[...new Set([page.error,...(issuesByPage.get(page.id)||[])].filter(Boolean))];
+        if(reasons.length)rows.push({label:'原件页',filename:page.filename,page:page.page_number,pageId:page.id,reasons});
+    }
+    const body=rows.length?`<div class="tablewrap"><table><thead><tr><th>资料</th><th>待核对事项</th><th>操作</th></tr></thead><tbody>
+        ${rows.map(row=>{
+            const params=new URLSearchParams({client_id:client.id,page_id:row.pageId});
+            if(row.recordId)params.set('record_id',row.recordId);
+            return `<tr><td><strong>${esc(row.label)}</strong><br><small>${esc(row.filename)} · 第 ${row.page} 页</small></td><td><ul class="bullets">${row.reasons.map(reason=>`<li>${esc(reason)}</li>`).join('')}</ul></td><td><a href="/workspace?${params}">打开原件并核对</a></td></tr>`;
+        }).join('')}
+        </tbody></table></div>`:'<p class="muted">目前没有待处理的识别或金额提示。</p>';
+    return `<details id="review-queue"><summary>待核对事项（${rows.length}）</summary>${body}</details>`;
+}
+
 let identifiedRefreshTimer;
 let identifiedRequest=0;
 async function loadIdentifiedForms(){
@@ -160,6 +198,7 @@ async function loadIdentifiedForms(){
         const documents=new Map(data.documents.map(doc=>[doc.id,doc]));
         const forms=[...groups.values()];
         const recognized=new Set(forms.map(form=>form.documentId));
+        const queueOpen=panel.querySelector('#review-queue')?.open??true;
         panel.innerHTML=forms.length?`<div style="overflow-x:auto"><table class="review-fields"><thead><tr><th>资料类型</th><th>来源文件</th><th>联邦申报参考</th><th>核对</th></tr></thead><tbody>${forms.map((form,index)=>{
             const label=form.type==='1040-reference'?'Form 1040':form.type;
             return `<tr><td><strong>${esc(label)}</strong></td><td>${esc(documents.get(form.documentId)?.filename)}<br><small>${form.pages.size} 页</small></td><td>${esc(filingDestination(form.type,Number(client.tax_year)))}</td><td><button type="button" data-form-review="${index}">${form.hasAmounts?'金额与原件':'查看原件'}</button></td></tr>`;
@@ -168,6 +207,8 @@ async function loadIdentifiedForms(){
             const progress=job?`已导入 ${job.progress} / ${job.total} 份`:`已导入 ${data.documents.length} 份`;
             panel.insertAdjacentHTML('afterbegin',`<p class="muted" role="status">${progress} · ${processing} 份正在识别${job?.status==='partial'?' · 部分文件导入失败':''}</p>`);
         }
+        panel.insertAdjacentHTML('afterbegin',renderReviewQueue(data,client));
+        panel.querySelector('#review-queue').open=queueOpen;
         if(importing||processing)identifiedRefreshTimer=setTimeout(()=>{
             if(panel.isConnected)loadIdentifiedForms();
         },4000);

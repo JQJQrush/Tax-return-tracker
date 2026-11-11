@@ -1,7 +1,7 @@
 """Persistent supervisor launched by Windows Task Scheduler."""
 import argparse,datetime,json,os,subprocess,sys,time
 from pathlib import Path
-import instance
+from taxtracker.operations import instance
 
 
 def main():

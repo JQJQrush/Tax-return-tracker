@@ -67,7 +67,7 @@ run_windows.bat
 - 处理客户资料不调用云端 OCR、模型或其他网络服务。首次安装依赖需要联网。
 - 本机数据和导出/备份未加密，使用电脑已有的磁盘加密和文件访问控制。备份包含完整原件和修改历史。
 - 恢复时双击 `restore_windows.bat`，选择资料备份 ZIP，再选择一个父目录；工具会验证并创建新的恢复目录，不覆盖现有数据。恢复完成后先关闭旧程序，再双击恢复目录中的 `start_restored.bat`。
-- 也可只检查备份：`python restore_backup.py --backup backup.zip --check-only`。命令行恢复：`python restore_backup.py --backup backup.zip --destination D:\TaxPrepRestored`，然后 `python app.py --data-dir D:\TaxPrepRestored`。
+- 也可只检查备份：`python -X utf8 -m taxtracker.operations.restore_backup --backup backup.zip --check-only`。命令行恢复：`python -X utf8 -m taxtracker.operations.restore_backup --backup backup.zip --destination D:\TaxPrepRestored`，然后 `python app.py --data-dir D:\TaxPrepRestored`。
 - 恢复会核对 ZIP 路径、数据库完整性、原始 PDF 指纹和页面预览；支持旧版无清单的资料备份。程序安装包不是资料备份。
 - 正在识别时暂不生成备份，待识别完成后再点。已中断/失败任务可随已有记录备份，恢复后继续识别。本版备份/恢复上限为 2GB、20000 个文件、单文件 128MB。
 - Windows 恢复窗口依赖 Python 的 Tcl/Tk。没有图形组件时可使用上述命令行方式。新目录的启动脚本指向当前程序文件夹，移动程序后可改用 `--data-dir` 启动。
@@ -96,7 +96,7 @@ python -m unittest discover -s tests -v
 
 更换端口：`python app.py --port 8766`。运行环境已测试 Python 3.12.14、PyMuPDF 1.26.6、Tesseract 5.3.4；Windows 启动脚本尚未在真实 Windows 电脑执行验收。
 
-源码：`app.py` 为本机服务；`core.py` 为字段和金额校验；`extract.py` 为版面提取；`review.py` 为算式和有限金额对照；`demo.py` 为合成演示；`check_setup.py` 为安装诊断；`restore_backup.py` 为验证/恢复；`workpaper.py` 为可打印底稿；`index.html` 为无外部 CDN 的界面；`tests/` 为自动测试。
+源码：根目录的 `app.py` 和 `server.py` 是启动入口。业务模块按用途放在 `taxtracker/` 下，`tests/` 保存自动测试，`docs/testing/` 保存测试报告。
 
 ## 官方资料参考
 

@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from core import OCR_SEPARATOR,aligned_ocr_text,classify,export_rows,money,suggestions,validate_record
+from taxtracker.documents.core import OCR_SEPARATOR,aligned_ocr_text,classify,export_rows,money,suggestions,validate_record
 
 class CoreTests(unittest.TestCase):
     def test_money_keeps_missing_and_cents(self):

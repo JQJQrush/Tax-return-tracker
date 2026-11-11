@@ -2,7 +2,7 @@ import sys,tempfile,unittest
 from pathlib import Path
 import pymupdf
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from folder_client import names_from_text,folder_info
+from taxtracker.clients.folder_client import names_from_text,folder_info
 
 class FolderClientTests(unittest.TestCase):
     def pdf(self,folder,name,person):

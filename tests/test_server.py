@@ -14,10 +14,10 @@ import urllib.request
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import accounts
+from taxtracker.operations import accounts
 import app
 import server
-from restore_backup import restore
+from taxtracker.operations.restore_backup import restore
 
 PASSWORD = 'Synthetic-test-password-2026'
 

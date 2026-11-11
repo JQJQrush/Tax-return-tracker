@@ -29,7 +29,7 @@
 迁移旧版资料：先停止上传/编辑并等 OCR 完成，下载旧版“备份全部工作资料”。在服务器恢复至**新的空目录**：
 
 ```powershell
-.\.venv\Scripts\python.exe restore_backup.py --backup D:\Transfer\backup.zip --destination D:\TaxTrackerData
+.\.venv\Scripts\python.exe -X utf8 -m taxtracker.operations.restore_backup --backup D:\Transfer\backup.zip --destination D:\TaxTrackerData
 ```
 
 然后以此目录运行服务器安装。首次启动会补充账号及页面修订字段，保留客户资料和原有核对结果。旧版填写的审核人文本作为历史保留；服务器版新修改的审核人使用真实登录账号。升级前保留原备份和旧程序，不要同时运行两套程序访问同一目录。
@@ -107,7 +107,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start_server.ps1
 
 另外定期复制完成的备份到另一设备/离线或受保护的备份目标；不要只在同一台服务器保留唯一副本。现有备份上限仍为 2GB、20,000 文件、单文件 128MB。
 
-恢复时关闭程序，用 `restore_backup.py` 恢复到新目录，修改 `server-settings.json` 的 `DataDir` 后启动。恢复已有服务器备份会保留员工账号，启动时清除旧会话；恢复旧单机备份后需建立第一个管理员。可用 `--check-only` 先验证 ZIP。恢复不包含自动重建证书或 Windows 任务。
+恢复时关闭程序，用 `python -X utf8 -m taxtracker.operations.restore_backup` 恢复到新目录，修改 `server-settings.json` 的 `DataDir` 后启动。恢复已有服务器备份会保留员工账号，启动时清除旧会话；恢复旧单机备份后需建立第一个管理员。可用 `--check-only` 先验证 ZIP。恢复不包含自动重建证书或 Windows 任务。
 
 更新只在服务器执行：
 

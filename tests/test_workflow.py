@@ -48,7 +48,8 @@ class WorkflowTests(unittest.TestCase):
         data.update(client_id=cid,id=None,state='received',document_id=99999)
         with self.assertRaises(urllib.error.HTTPError):self.call('/api/intake',data)
         with urllib.request.urlopen(urllib.request.Request(self.url+'/api/backup',headers={'X-Local-Token':app.TOKEN})) as r:raw=r.read()
-        import restore_backup,sqlite3
+        from taxtracker.operations import restore_backup
+        import sqlite3
         with tempfile.TemporaryDirectory() as temp:
             backup=Path(temp)/'backup.zip';backup.write_bytes(raw);dest=Path(temp)/'restored'
             restore_backup.restore(backup,dest)

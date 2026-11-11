@@ -1,6 +1,6 @@
 """Portable, printable human-entry workpaper. Not a ProSeries import format."""
 from html import escape
-from core import FIELDS
+from taxtracker.documents.core import FIELDS
 
 
 def render_workpaper(data,scope='reviewed'):

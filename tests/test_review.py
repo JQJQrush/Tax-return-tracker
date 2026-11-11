@@ -1,8 +1,8 @@
 import sys,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from extract import combine_candidates,ssa_candidates,broker_candidates,reference_candidates
-from review import checks
+from taxtracker.documents.extract import combine_candidates,ssa_candidates,broker_candidates,reference_candidates
+from taxtracker.verification.review import checks
 
 def w(text,x,y,width=.025):return {'text':text,'box':[x,y,width,.01],'confidence':90}
 def record(number,form,values,role='source',**extra):

@@ -2,7 +2,9 @@ import tempfile,unittest,sys
 from pathlib import Path
 import pymupdf
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import app,crm,folder_import
+import app
+from taxtracker.clients import crm
+from taxtracker.clients import folder_import
 
 class ImportTests(unittest.TestCase):
     def test_pdf_image_import_and_repeat_dedup(self):

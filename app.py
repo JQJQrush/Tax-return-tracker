@@ -19,12 +19,12 @@ import webbrowser
 import zipfile
 
 import pymupdf as fitz
-from core import FIELDS, SCHEMA_VERSION, OCR_SEPARATOR, aligned_ocr_text, block_ocr_text, classify, export_rows, sha256, suggestions, validate_record
-from extract import robinhood_summary, ocr_words,layout_candidates,combine_candidates
-from intake import validate_item, reminder
-from handoff import build_handoff
-from review import checks
-from workpaper import render_workpaper
+from taxtracker.documents.core import FIELDS, SCHEMA_VERSION, OCR_SEPARATOR, aligned_ocr_text, block_ocr_text, classify, export_rows, sha256, suggestions, validate_record
+from taxtracker.documents.extract import robinhood_summary, ocr_words,layout_candidates,combine_candidates
+from taxtracker.clients.intake import validate_item, reminder
+from taxtracker.verification.handoff import build_handoff
+from taxtracker.verification.review import checks
+from taxtracker.verification.workpaper import render_workpaper
 
 ROOT = Path(__file__).resolve().parent
 TOKEN = secrets.token_urlsafe(32)
@@ -104,7 +104,7 @@ def init_db():
             db.execute('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 0')
         # Work interrupted by shutdown must never look complete.
         db.execute("UPDATE documents SET status='interrupted',error='上次处理被中断，可重新识别' WHERE status='processing'")
-        import crm
+        from taxtracker.clients import crm
         crm.init(db)
 
 
@@ -300,7 +300,7 @@ def build_backup():
             if snap.execute("SELECT 1 FROM documents WHERE status='processing'").fetchone():raise ValueError('请等当前文件识别完成后再备份')
             docs=list(snap.execute('SELECT id,hash FROM documents'))
             pages=list(snap.execute('SELECT document_id,page_number FROM pages'))
-        from restore_backup import MAX_TOTAL,MAX_FILE
+        from taxtracker.operations.restore_backup import MAX_TOTAL,MAX_FILE
         selected=[dbpath]+[doc_dir(did)/'original.pdf' for did,_ in docs]+[doc_dir(did)/f'page-{number}.png' for did,number in pages]
         selected += [doc_dir(did)/f'words-{number}.json' for did,number in pages if (doc_dir(did)/f'words-{number}.json').is_file()]
         if any(not p.is_file() for p in selected):raise ValueError('原件或页面预览缺失，不能生成完整备份')
@@ -453,7 +453,7 @@ class Handler(BaseHTTPRequestHandler):
                 data['reviewer'] = self.user['username']
                 data['tester'] = self.user['username']
             if path=='/api/demo':
-                from demo import demo_documents
+                from taxtracker.documents.demo import demo_documents
                 with connection() as db:
                     cid=db.execute('INSERT INTO clients(alias,tax_year,created) VALUES(?,?,?)',('演示客户（合成资料）',2025,now())).lastrowid
                 source,reference=demo_documents()

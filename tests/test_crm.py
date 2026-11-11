@@ -7,7 +7,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import app,crm,restore_backup
+import app
+from taxtracker.clients import crm
+from taxtracker.operations import restore_backup
 
 
 class CRMTests(unittest.TestCase):

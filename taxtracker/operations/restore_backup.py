@@ -100,7 +100,7 @@ def restore(archive_path,destination=None,check_only=False):
 def write_launcher(destination):
     def escaped(path):return str(path).replace('%','%%')
     script='@echo off\r\nsetlocal DisableDelayedExpansion\r\nchcp 65001 >nul\r\n'
-    script+=f'set "TAXPREP_DATA_DIR={escaped(destination)}"\r\n"{escaped(Path(__file__).resolve().parent/"run_windows.bat")}"\r\n'
+    script+=f'set "TAXPREP_DATA_DIR={escaped(destination)}"\r\n"{escaped(Path(__file__).resolve().parents[2]/"run_windows.bat")}"\r\n'
     (destination/'start_restored.bat').write_bytes(script.encode('utf-8'))
 
 

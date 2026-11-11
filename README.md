@@ -36,7 +36,9 @@ flowchart LR
 | [CRM 设计](CRM_FRAMEWORK.md) | 客户、年度档案、资料和核对工作台的设计 |
 | [测试指南](TESTER_GUIDE.md) | 如何验证识别、核对及多人操作 |
 | [测试记录](TESTING.md) | 功能测试与验证范围 |
-| [回归报告](testing/CRM-regression-report-2026-11-11.md) | 一次真实资料导入的脱敏结果及待改进项 |
+| [回归报告](docs/testing/CRM-regression-report-2026-11-11.md) | 一次真实资料导入的脱敏结果及待改进项 |
+
+代码位于 `taxtracker/`，按用途分为客户与资料管理（`clients`）、表格与提取（`documents`）、审核与底稿（`verification`）、账号和运维工具（`operations`）。根目录保留 Windows 启动入口。自动测试放在 `tests/`，测试报告放在 `docs/testing/`。
 
 Windows 开发环境可运行以下命令执行自动测试。
 

@@ -2,7 +2,7 @@
 import csv
 import io
 import re
-from core import money
+from taxtracker.documents.core import money
 
 
 def ocr_words(tsv, width, height):
