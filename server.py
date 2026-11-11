@@ -3,16 +3,19 @@ import argparse
 import getpass
 from http.cookies import SimpleCookie, CookieError
 import json
+import os
 from pathlib import Path
 import secrets
 import socket
 import ssl
 import threading
 import webbrowser
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import accounts
 import app
+import crm
+import instance
 
 WRITE_LOCK = threading.RLock()
 
@@ -91,30 +94,64 @@ class Handler(app.Handler):
         if origin and origin != expected:
             raise AccessError('拒绝跨站请求', 403)
         path = urlparse(self.path).path
-        if path in ('/login', '/api/login'):
+        if path in ('/login', '/api/login') or (path == '/api/instance' and self.client_address[0] in ('127.0.0.1','::1')):
             return
         with app.connection() as db:
             self.user = accounts.session(db, self.cookie_token(), touch=self.command == 'POST')
         if not self.user:
             raise AccessError('请登录，或会话已过期', 401)
+        query=parse_qs(urlparse(self.path).query)
+        cid=query.get('client_id',[None])[0]
+        import re
+        match=re.match(r'/api/(pages|records|documents)/(\d+)',path)
+        with app.connection() as db:
+            if match:
+                category,ident=match.groups()
+                sql={'pages':'SELECT d.client_id FROM pages p JOIN documents d ON d.id=p.document_id WHERE p.id=?','records':'SELECT d.client_id FROM records r JOIN pages p ON p.id=r.page_id JOIN documents d ON d.id=p.document_id WHERE r.id=?','documents':'SELECT client_id FROM documents WHERE id=?'}[category]
+                row=db.execute(sql,(int(ident),)).fetchone()
+                if row:cid=row[0]
+            if cid and db.execute('SELECT 1 FROM crm_trash WHERE client_id=?',(cid,)).fetchone():raise AccessError('客户年度已移入回收站，请先恢复',409)
         if self.command == 'POST':
             if not secrets.compare_digest(self.headers.get('X-Local-Token', ''), self.user['csrf']):
                 raise AccessError('会话验证失败，请刷新页面', 403)
             if path not in ('/api/logout', '/api/password') and self.user['role'] == 'viewer':
                 raise AccessError('此账号只有查看权限', 403)
-        if path in ('/admin', '/api/users', '/api/server-events', '/api/backup', '/api/server-backup') and self.user['role'] != 'admin':
+        if path in ('/admin', '/api/users', '/api/server-events', '/api/backup', '/api/server-backup','/api/crm/delete','/api/crm/restore','/api/crm/trash','/api/crm/delete-preview') and self.user['role'] != 'admin':
             raise AccessError('此操作需要管理员权限', 403)
 
     def do_GET(self):
         try:
             self.guarded()
             path = urlparse(self.path).path
+            if path == '/api/instance':
+                return self.send({'product':instance.PRODUCT,'instance_id':getattr(self.server,'instance_id',None)})
             if path == '/login':
                 return self.send((app.ROOT/'login.html').read_bytes(), content_type='text/html; charset=utf-8')
-            if path in ('/', '/admin'):
-                filename = 'admin.html' if path == '/admin' else 'index.html'
+            if path in ('/', '/admin', '/workspace'):
+                filename = {'/':'crm.html','/admin':'admin.html','/workspace':'index.html'}[path]
                 html = (app.ROOT/filename).read_text(encoding='utf-8').replace('__LOCAL_TOKEN__', self.user['csrf'])
                 return self.send(html.encode(), content_type='text/html; charset=utf-8')
+            if path in ('/api/crm/trash','/api/crm/delete-preview'):
+                query=parse_qs(urlparse(self.path).query)
+                with app.connection() as db:
+                    result=crm.trash(db) if path.endswith('/trash') else crm.deletion_preview(db,int(query['id'][0]),query.get('scope',['year'])[0])
+                return self.send(result)
+            if path == '/api/crm/assignees':
+                with app.connection() as db:return self.send(crm.assignees(db))
+            if path == '/api/crm':
+                query=parse_qs(urlparse(self.path).query)
+                with app.connection() as db:
+                    value=crm.detail(db,int(query['id'][0])) if query.get('id') else crm.listing(db)
+                    if isinstance(value,list):
+                        for row in value:
+                            row['intake']=[dict(r) for r in db.execute('SELECT * FROM intake WHERE client_id=?',(row['id'],))]
+                return self.send(value)
+            if path == '/api/crm/document':
+                query=parse_qs(urlparse(self.path).query)
+                with app.connection() as db:
+                    doc=db.execute('SELECT id FROM documents WHERE id=? AND client_id=?',(int(query['document_id'][0]),int(query['client_id'][0]))).fetchone()
+                if not doc:raise ValueError('文件不存在于此年度')
+                return self.send((app.doc_dir(doc['id'])/'original.pdf').read_bytes(),content_type='application/pdf',extra={'Content-Disposition':'inline; filename="source.pdf"'})
             if path == '/api/users':
                 with app.connection() as db:
                     rows = [dict(r) for r in db.execute('SELECT username,role,active FROM users ORDER BY username')]
@@ -124,8 +161,10 @@ class Handler(app.Handler):
                     rows = [dict(r) for r in db.execute('SELECT * FROM server_events ORDER BY id DESC LIMIT 500')]
                 return self.send(rows)
             return super().do_GET()
+        except (ValueError,KeyError) as exc:
+            self.send({'error':str(exc)},400)
         except AccessError as exc:
-            if exc.status == 401 and urlparse(self.path).path in ('/', '/admin'):
+            if exc.status == 401 and urlparse(self.path).path in ('/', '/admin', '/workspace'):
                 return self.send(b'', 303, 'text/plain', {'Location':'/login'})
             self.send({'error':exc.message}, exc.status)
 
@@ -147,6 +186,50 @@ class Handler(app.Handler):
             raise AccessError('请求格式无效', 400)
 
     def do_POST(self):
+        if urlparse(self.path).path == '/api/crm/preview-folder':
+            try:
+                self.guarded();data=self.read_json()
+                from folder_client import folder_info
+                info=folder_info(data.get('source_path',''))
+                return self.send({'files':[{'name':f['name'],'type':'PDF' if f['name'].lower().endswith('.pdf') else '图片'} for f in info['files']]})
+            except AccessError as exc:return self.send({'error':exc.message},exc.status)
+            except (ValueError,OSError) as exc:return self.send({'error':str(exc)},400)
+        if urlparse(self.path).path == '/api/crm/scan-folder':
+            try:
+                self.guarded();data=self.read_json();cid=int(data['client_id'])
+                with app.connection() as db:client=crm.detail(db,cid)
+                if not client['source_path']:raise ValueError('请先保存原始资料文件夹路径')
+                from folder_client import folder_info
+                import folder_import
+                info=folder_info(client['source_path'])
+                folder_import.enqueue(cid,info['files'],self.user['username'])
+                return self.send({'queued':True,'files':len(info['files'])})
+            except AccessError as exc:return self.send({'error':exc.message},exc.status)
+            except (ValueError,KeyError,OSError) as exc:return self.send({'error':str(exc)},400)
+        if urlparse(self.path).path == '/api/crm/create':
+            try:
+                self.guarded()
+                data=self.read_json()
+                data.pop('_folder_info',None)
+                name=str(data.get('name','')).strip()
+                path=str(data.get('source_path','')).strip()
+                if not data.get('contact_id') and not name and not path:raise ValueError('客户姓名和资料文件夹路径至少填写一项')
+                if path:
+                    from folder_client import folder_info
+                    info=folder_info(path,read_name=not name and not data.get('contact_id'),engine=app.tesseract_path())
+                    data['_folder_info']=info
+                    if not name:data['name']=info['name']
+                with WRITE_LOCK:
+                    self.guarded()
+                    with app.connection() as db:
+                        db.execute('BEGIN IMMEDIATE')
+                        result=crm.create(db,data,self.user['username'])
+                    if data.get('_folder_info'):
+                        import folder_import
+                        folder_import.enqueue(result['id'],data['_folder_info']['files'],self.user['username'])
+                return self.send(result)
+            except AccessError as exc:return self.send({'error':exc.message},exc.status)
+            except (ValueError,TypeError,OSError) as exc:return self.send({'error':str(exc)},400)
         # Serialize writes before revision checks; OCR workers keep their own transactions.
         with WRITE_LOCK:
             try:
@@ -195,6 +278,29 @@ class Handler(app.Handler):
                     finally:
                         temporary.unlink(missing_ok=True)
                     return self.send({'filename':filename})
+                if path in ('/api/crm/delete','/api/crm/restore'):
+                    data=self.read_json()
+                    with app.connection() as db:
+                        db.execute('BEGIN IMMEDIATE')
+                        result=crm.restore(db,data.get('batch'),self.user['username']) if path.endswith('/restore') else crm.soft_delete(db,data,self.user['username'])
+                    if result is False:return self.send({'error':'客户资料已更新，请重新确认删除范围'},409)
+                    return self.send(result if isinstance(result,dict) else {'deleted':True})
+                if path == '/api/crm/assignees':
+                    data=self.read_json()
+                    with app.connection() as db:result=crm.add_assignee(db,data,self.user['username'])
+                    return self.send(result)
+                if path in ('/api/crm/create','/api/crm/save','/api/crm/link'):
+                    data=self.read_json()
+                    with app.connection() as db:
+                        db.execute('BEGIN IMMEDIATE')
+                        if path.endswith('/create'):result=crm.create(db,data,self.user['username'])
+                        elif path.endswith('/link'):result=crm.link(db,int(data['client_id']),data,self.user['username'])
+                        else:
+                            if not crm.save(db,int(data['client_id']),data,self.user['username']):
+                                result={'error':'资料已被其他员工修改，请重新打开后保存'}
+                            else:result={'saved':True}
+                    if 'error' in result:return self.send(result,409)
+                    return self.send(result)
                 if self.headers.get('Transfer-Encoding'):
                     raise AccessError('不支持此请求编码', 400)
                 return super().do_POST()
@@ -228,7 +334,15 @@ def main():
         parser.error('数据库必须放在服务器本机磁盘，不能使用网络共享')
     if app.DATA == app.ROOT or app.ROOT in app.DATA.parents:
         parser.error('资料目录必须位于程序目录之外，避免程序更新影响资料')
-    lock = app.acquire_data_lock()
+    try:
+        lock = app.acquire_data_lock()
+    except ValueError:
+        existing=instance.active_url(app.DATA)
+        if existing and not args.set_user:
+            print('Tax Return Tracker is already running. Continue at: '+existing)
+            if args.open_browser:webbrowser.open(existing)
+            return
+        parser.exit(1,'Data directory is in use or cannot be locked. Use the existing workspace or stop its server first. Do not delete app.lock.\n')
     server = None
     try:
         app.init_db()
@@ -260,12 +374,17 @@ def main():
         if args.host not in ('127.0.0.1','localhost','::1') and not args.allowed_host:
             parser.error('请用 --allowed-host 指定员工浏览器访问的服务器名称或 IP 及端口')
         server = OfficeServer((args.host, args.port), Handler)
+        server.instance_id=secrets.token_hex(24)
         configure(server, args.allowed_host or [f'localhost:{args.port}',f'127.0.0.1:{args.port}'], secure)
         if secure:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.minimum_version = ssl.TLSVersion.TLSv1_2
             context.load_cert_chain(args.cert, args.key)
             server.tls_context = context
+        # Only a verified loopback endpoint may be reused by a second launch.
+        local_host='127.0.0.1' if args.host in ('127.0.0.1','0.0.0.0','localhost') else '[::1]'
+        app.atomic_json(app.DATA/'server-instance.json',{'instance_id':server.instance_id,
+                        'url':('https' if secure else 'http')+'://'+local_host+':'+str(args.port),'pid':os.getpid()})
         print('Tax Return Tracker 0.7 server — data: ' + str(app.DATA))
         print('Browser: ' + ('https' if secure else 'http') + '://' + sorted(server.allowed_hosts)[0])
         print('Keep this process running. Ctrl+C stops it; OCR jobs finish before shutdown.')
@@ -277,6 +396,10 @@ def main():
     finally:
         if server:
             server.server_close()
+            marker=app.DATA/'server-instance.json'
+            try:
+                if json.loads(marker.read_text(encoding='utf-8')).get('instance_id')==server.instance_id:marker.unlink()
+            except (OSError,ValueError):pass
         app.POOL.shutdown(wait=True)
         lock.close()
 

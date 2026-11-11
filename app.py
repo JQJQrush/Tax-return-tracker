@@ -18,9 +18,9 @@ from urllib.parse import parse_qs, urlparse
 import webbrowser
 import zipfile
 
-import fitz
+import pymupdf as fitz
 from core import FIELDS, SCHEMA_VERSION, OCR_SEPARATOR, aligned_ocr_text, block_ocr_text, classify, export_rows, sha256, suggestions, validate_record
-from extract import ocr_words,layout_candidates,combine_candidates
+from extract import robinhood_summary, ocr_words,layout_candidates,combine_candidates
 from intake import validate_item, reminder
 from handoff import build_handoff
 from review import checks
@@ -104,6 +104,8 @@ def init_db():
             db.execute('ALTER TABLE pages ADD COLUMN revision INTEGER NOT NULL DEFAULT 0')
         # Work interrupted by shutdown must never look complete.
         db.execute("UPDATE documents SET status='interrupted',error='上次处理被中断，可重新识别' WHERE status='processing'")
+        import crm
+        crm.init(db)
 
 
 def tesseract_path():
@@ -125,7 +127,9 @@ def ocr_page(page, directory, number):
     native = page.get_text(sort=True).strip()
     useful = len(re.findall(r'[A-Za-z]{3,}', native))
     gibberish = sum(ord(c) < 32 and c not in '\n\r\t' or ord(c) > 126 for c in native)
-    if (useful > 20 or (useful>=5 and not page.get_images())) and gibberish < max(10, len(native) * .03):
+    full_scan = any(fitz.Rect(info['bbox']).get_area() > .50 * page.rect.get_area()
+                    for info in page.get_image_info())
+    if not full_scan and (useful > 20 or (useful>=5 and not page.get_images())) and gibberish < max(10, len(native) * .03):
         words=[{'text':w[4],'box':[w[0]/page.rect.width,w[1]/page.rect.height,(w[2]-w[0])/page.rect.width,(w[3]-w[1])/page.rect.height],
                 'confidence':None} for w in page.get_text('words')]
         atomic_json(directory/f'words-{number}.json',{'rotation':0,'words':words})
@@ -146,12 +150,21 @@ def ocr_page(page, directory, number):
         # Keep approximately 288 DPI for recognizing small brokerage amounts.
         pix=page.get_pixmap(matrix=fitz.Matrix(4.0, 4.0).prerotate(rotation))
         pix.save(image)
-        result = subprocess.run([engine, str(image), 'stdout', '-l', 'eng', '--psm', '3', 'tsv'],
-                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=90)
-        if result.returncode:
+        def read_ocr(mode):
+            result = subprocess.run([engine, str(image), 'stdout', '-l', 'eng', '--psm', mode, 'tsv'],
+                                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=90)
+            if result.returncode:
+                return '', []
+            text = aligned_ocr_text(result.stdout) + OCR_SEPARATOR + block_ocr_text(result.stdout)
+            return text, ocr_words(result.stdout,pix.width,pix.height)
+        text, words = read_ocr('3')
+        if not text:
             return native, 'manual', rotation, 'OCR 未成功，请手工核对此页或重新识别'
-        text=aligned_ocr_text(result.stdout)+OCR_SEPARATOR+block_ocr_text(result.stdout)
-        atomic_json(directory/f'words-{number}.json',{'rotation':rotation,'words':ocr_words(result.stdout,pix.width,pix.height)})
+        if 'W-2' in classify(text) and len(layout_candidates(words,'W-2'))<8:
+            alt_text, alt_words = read_ocr('6')
+            if len(layout_candidates(alt_words,'W-2'))>len(layout_candidates(words,'W-2')):
+                text, words = alt_text, alt_words
+        atomic_json(directory/f'words-{number}.json',{'rotation':rotation,'words':words})
         return text, 'tesseract_dual_layout', rotation, ''
     finally:
         image.unlink(missing_ok=True)
@@ -177,18 +190,24 @@ def process_document(doc_id):
                 with connection() as db:
                     page_id = db.execute('INSERT INTO pages(document_id,page_number,text,method,rotation,error) VALUES(?,?,?,?,?,?)',
                                          (doc_id,index+1,text,method,rotation,error)).lastrowid
-                    for form in classify(text, doc['role']):
-                        evidence = suggestions(text, form)
-                        word_file=directory/f'words-{index+1}.json'
-                        if word_file.is_file():
-                            stored=json.loads(word_file.read_text())
-                            evidence=combine_candidates(evidence,layout_candidates(stored.get('words',[]) if isinstance(stored,dict) else stored,form))
+                    word_file=directory/f'words-{index+1}.json'
+                    stored=json.loads(word_file.read_text()) if word_file.is_file() else {}
+                    words=stored.get('words',[]) if isinstance(stored,dict) else stored
+                    entries=[]
+                    for form in classify(text,doc['role']):
+                        found=combine_candidates(suggestions(text,form),layout_candidates(words,form))
+                        entries.append((form,found,'unknown','unknown',''))
+                    if doc['role']=='source':
+                        entries.extend(('1099-B',found,category,'summary',notes)
+                                       for category,found,notes in robinhood_summary(words))
+                    for form,found,category,level,notes in entries:
                         payload = {'form_type': form, 'owner': 'return' if form=='1040-reference' else 'unknown',
-                                   'values': {key: evidence.get(key, {}).get('value') for key,_ in FIELDS[form]},
+                                   'values': {key: found.get(key, {}).get('value') for key,_ in FIELDS[form]},
                                    'status': 'pending', 'reviewer': '', 'confirmed_blanks': False,
-                                   'payer': '', 'account_alias': '', 'category': 'unknown', 'entry_level':'unknown', 'notes': ''}
+                                   'payer': '', 'account_alias': '', 'category': category,
+                                   'entry_level':level, 'notes': notes}
                         db.execute('INSERT INTO records(page_id,payload,evidence,updated) VALUES(?,?,?,?)',
-                                   (page_id,json.dumps(payload),json.dumps(evidence),now()))
+                                   (page_id,json.dumps(payload),json.dumps(found),now()))
                     db.execute('UPDATE documents SET progress=? WHERE id=?', (index+1,doc_id))
             with connection() as db:
                 db.execute("UPDATE documents SET status='done',progress=page_count WHERE id=?", (doc_id,))
@@ -342,16 +361,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send({'fields':FIELDS,'ocr_available':bool(tesseract_path()),'version':SCHEMA_VERSION})
             if path=='/api/clients':
                 with connection() as db:
-                    rows=[dict(r) for r in db.execute('SELECT * FROM clients ORDER BY id DESC')]
+                    rows=[dict(r) for r in db.execute('SELECT * FROM clients WHERE id NOT IN (SELECT client_id FROM crm_trash) ORDER BY id DESC')]
                 return self.send(rows)
             if path=='/api/workspace':
                 cid=int(query['client_id'][0])
                 with connection() as db:
                     docs=[dict(r) for r in db.execute('SELECT * FROM documents WHERE client_id=? ORDER BY id',(cid,))]
-                    pages=[dict(r) for r in db.execute('''SELECT p.id,p.document_id,p.page_number,p.method,p.rotation,p.error,p.disposition,p.reviewer,p.revision,d.role,d.filename
+                    pages=[dict(r) for r in db.execute('''SELECT p.id,p.document_id,p.page_number,p.method,p.rotation,p.error,p.disposition,p.reviewer,p.revision,d.role,d.filename,p.text
                           FROM pages p JOIN documents d ON p.document_id=d.id WHERE d.client_id=? ORDER BY d.id,p.page_number''',(cid,))]
                     records=list_records(db,cid)
                     intake=[dict(r) for r in db.execute('SELECT * FROM intake WHERE client_id=? ORDER BY id',(cid,))]
+                for page in pages:
+                    heading = re.search(
+                        r'^\s*SCHEDULE\s+(1-A|[1-3]|8812|EIC|SE|[A-FHJR])(?=\s|\(|$)\s*(?:\(\s*)?(?:FORM\s+)?1040\b',
+                        '\n'.join((page.pop('text') or '').splitlines()[:8]),
+                        re.IGNORECASE | re.MULTILINE,
+                    )
+                    if heading:
+                        page['schedule'] = 'Schedule ' + heading.group(1).upper()
                 report=checks(records,pages,docs)
                 return self.send({'documents':docs,'pages':pages,'records':records,'checks':report,
                                   'intake':intake,'handoff':build_handoff(records,pages,docs,report,intake)})
@@ -419,6 +446,9 @@ class Handler(BaseHTTPRequestHandler):
                                        query.get('role',['source'])[0],raw)
                 return self.send(result)
             data=json.loads(raw)
+            if data.get('client_id'):
+                with connection() as db:
+                    if db.execute('SELECT 1 FROM crm_trash WHERE client_id=?',(data['client_id'],)).fetchone():raise ValueError('客户年度已移入回收站，请先恢复')
             if getattr(self, 'user', None):
                 data['reviewer'] = self.user['username']
                 data['tester'] = self.user['username']

@@ -79,7 +79,7 @@ def classify(text, role='source'):
     found = []
     if re.search(r'SSA\s*[-—–]?\s*1099', t) and 'SOCIAL SECURITY BENEFIT' in t:
         return ['SSA-1099']
-    if re.search(r'W\s*[-—–]?\s*2\b', t) and any(x in t for x in ['WAGE', 'EARNINGS']):
+    if re.search(r'W\s*[-—–]?\s*2\b', t) and any(x in t for x in ['WAGE', 'EARNINGS']) and not re.search(r'(?:^|\n)\s*INSTRUCTIONS FOR EMPLOYEE\b', text, re.I):
         found.append('W-2')
     for form in ['INT', 'DIV', 'B']:
         if re.search(r'''1099[\s\-—–‘’'"]*''' + form + r'\b', t):

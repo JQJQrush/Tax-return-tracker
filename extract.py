@@ -65,21 +65,72 @@ def w2_candidates(words):
             'ss_wages':['social','security','wages'], 'ss_withheld':['social','security','tax','withheld'],
             'medicare_wages':['medicare','wages','and','tips'], 'medicare_withheld':['medicare','tax','withheld']}
     anchors={key:phrases(words,tokens) for key,tokens in labels.items()}
-    # Select one uppermost W-2 copy, never merge multiple copies by their amounts.
-    if not anchors['wages']:return {}
-    wages=anchors['wages'][0]
-    federal=next((w for w in anchors['federal_withheld'] if abs(cy(w)-cy(wages))<.025 and w['box'][0]>wages['box'][0]),None)
+    # Use one complete copy. A nearby copy can have cleaner OCR of the same form.
+    copies=[w2_copy(words, anchors, wages) for wages in anchors['wages']]
+    return max(copies, key=lambda copy:sum(not key.startswith('state_') for key in copy), default={})
+
+
+def w2_copy(words, anchors, wages):
+    federal=next((w for w in anchors['federal_withheld'] if abs(cy(w)-cy(wages))<.012 and .10<w['box'][0]-wages['box'][0]<.60),None)
+    right_anchors=anchors['ss_withheld']+anchors['medicare_withheld']
+    if not federal:
+        federal=next((w for w in right_anchors
+                      if .012<cy(w)-cy(wages)<.068
+                      and .10<w['box'][0]-wages['box'][0]<.23),None)
     if not federal:return {}
     left=wages['box'][0];middle=federal['box'][0]-.008
-    right=middle+(middle-left)
+    other=next((w['box'][0] for w in anchors['wages'] if abs(cy(w)-cy(wages))<.012
+                and w['box'][0]>left+.30),None)
+    right=min(1.,other-.14 if other else middle+(middle-left)+.018)
     result={}
-    for key in labels:
+    for key in anchors:
         left_column=key in ['wages','ss_wages','medicare_wages']
         eligible=[w for w in anchors[key] if cy(wages)-.025<=cy(w)<=cy(wages)+.09 and
                   (left-.015<=w['box'][0]<middle if left_column else middle<=w['box'][0]<right)]
         if not eligible:continue
-        found=cell(words,eligible[0],middle if left_column else right,depth=.028)
+        anchor=eligible[0]
+        later=[cy(w)-cy(anchor)-.002 for aa in anchors.values() for w in aa
+               if .012<cy(w)-cy(anchor)<.030 and left-.015<=w['box'][0]<right]
+        found=cell(words,anchor,middle if left_column else right,depth=min(later,default=.025))
         if found:result[key]=evidence(found,'w2_cell')
+    # Some scans lose the Box 3/4 captions. Locate the middle amount row
+    # only when the same copy has both end rows and the Medicare right column.
+    if all(key in result for key in ('wages','medicare_wages','medicare_withheld')):
+        first, last, right_end = (result[key]['box'] for key in ('wages','medicare_wages','medicare_withheld'))
+        top, bottom = first[1]+first[3]/2, last[1]+last[3]/2
+        if .035<bottom-top<.073 and abs(first[0]+first[2]-last[0]-last[2])<.025:
+            for key,edge in [('ss_wages',last[0]+last[2]),('ss_withheld',right_end[0]+right_end[2])]:
+                if key in result:
+                    continue
+                matches=[w for w in words if amount_token(w) is not None
+                         and abs(cy(w)-(top+bottom)/2)<.005
+                         and abs(w['box'][0]+w['box'][2]-edge)<.018]
+                if len(matches)==1:
+                    result[key]=evidence(matches[0],'w2_middle_amount_row')
+    # State boxes span the bottom of the selected copy. Some payroll layouts
+    # print their captions below the amounts rather than above them.
+    bottom=next((cy(w)-.02 for w in anchors['wages']
+                 if abs(w['box'][0]-left)<.015 and cy(w)>cy(wages)+.09),1.)
+    state16=phrases(words,['16','state','wages'])
+    state17=phrases(words,['17','state','income','tax'])
+    state15=phrases(words,['15','state'])
+    for a in state16:
+        if not (left-.02<=a['box'][0]<right and cy(wages)+.09<cy(a)<bottom):continue
+        b=next((w for w in state17 if abs(cy(w)-cy(a))<.009 and a['box'][0]<w['box'][0]<right),None)
+        start=next((w for w in state15 if abs(cy(w)-cy(a))<.009 and
+                    max(0,left-2*(middle-left))<=w['box'][0]<left),None)
+        if not b or not start:continue
+        local=[cy(w) for w in phrases(words,['18','local','wages'])
+               if abs(w['box'][0]-start['box'][0])<.015 and cy(w)>cy(a)]
+        end=min(local,default=cy(a)+.045)
+        for key,anchor,edge in [('state_wages',a,b['box'][0]-.004),('state_withheld',b,right)]:
+            candidates=[w for w in words if anchor['box'][0]-.004<=w['box'][0] and
+                        w['box'][0]+w['box'][2]<=edge+.005 and
+                        max(cy(wages)+.09,cy(a)-.045)<cy(w)<min(end-.004,cy(a)+.045) and
+                        amount_token(w) is not None]
+            # Multiple state rows must stay unresolved, including equal amounts.
+            if len(candidates)==1:result[key]=evidence(candidates[0],'w2_state_cell')
+        break
     return result
 
 
@@ -120,6 +171,47 @@ def broker_candidates(words):
             if result:return {}  # More than one category on the page needs separate manual records.
             for key,w in zip(['proceeds','cost_basis','wash_sale_disallowed','reported_gain'],amounts):
                 result[key]=evidence(w,'broker_category_total')
+    return result
+
+
+def robinhood_summary(words):
+    # The composite statement prints the IRS category totals above the detail pages.
+    if not any(clean(w['text'])=='robinhood' for w in words):
+        return []
+    lines = []
+    for word in sorted(words,key=cy):
+        if not lines or abs(cy(word)-cy(lines[-1][0]))>.003:
+            lines.append([])
+        lines[-1].append(word)
+    started = False
+    result = []
+    seen = set()
+    for line in lines:
+        row = sorted(line,key=lambda w:w['box'][0])
+        text = ' '.join(w['text'] for w in row)
+        if re.search(r'^Term Form 8949 type Proceeds Cost basis Market discount Wash sale loss disallowed Net gain',text,re.I):
+            started = True
+            continue
+        if not started:
+            continue
+        if text.startswith('Total Undetermined'):
+            break
+        category = re.match(r'^(Short [AB]|Long [DE]) \(basis (?:not )?reported to the IRS\)',text,re.I)
+        if not category:
+            continue
+        box = category.group(1)[-1].upper()
+        amounts = [w for w in row if amount_token(w) is not None]
+        if box in seen or len(amounts)!=5:
+            return []
+        seen.add(box)
+        if all(amount_token(w)=='0.00' for w in amounts):
+            continue
+        keys = ['proceeds','cost_basis',None,'wash_sale_disallowed','reported_gain']
+        values = {key:evidence(w,'robinhood_category_total') for key,w in zip(keys,amounts) if key}
+        notes = 'Robinhood 分类汇总。交易明细用于对照，避免重复计入。'
+        if amount_token(amounts[2])!='0.00':
+            notes += ' 原件另列市场折价 '+amount_token(amounts[2])+'，请核对调整。'
+        result.append((box,values,notes))
     return result
 
 

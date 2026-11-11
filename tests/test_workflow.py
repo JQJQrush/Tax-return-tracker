@@ -11,7 +11,7 @@ import io
 import zipfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import app
-import fitz
+import pymupdf as fitz
 
 class WorkflowTests(unittest.TestCase):
     @classmethod

@@ -55,6 +55,71 @@ class Browser:
 
 
 class ServerTests(unittest.TestCase):
+    def test_create_from_folder_only_and_reuse_workspace(self):
+        admin=self.browser('admin');reader=self.browser('reader')
+        with tempfile.TemporaryDirectory() as folder:
+            import pymupdf
+            doc=pymupdf.open();page=doc.new_page()
+            page.insert_text((50,50),"Taxpayer's name                 Social security number\nFOLDER QA PERSON                 000-00-0000")
+            doc.save(Path(folder)/'taxpayer.pdf');doc.close()
+            self.assertEqual(reader.request('/api/crm/preview-folder',{'source_path':folder})[0],403)
+            status,preview,_=admin.request('/api/crm/preview-folder',{'source_path':folder})
+            self.assertEqual(status,200);self.assertEqual(preview['files'][0]['name'],'taxpayer.pdf')
+            payload={'name':'','source_path':folder,'tax_year':2025}
+            self.assertEqual(reader.request('/api/crm/create',payload)[0],403)
+            status,created,_=admin.request('/api/crm/create',payload)
+            self.assertEqual(status,200);self.assertEqual(created['name'],'FOLDER QA PERSON')
+            cid=created['id']
+            detail=admin.request('/api/crm?id='+str(cid))[1]
+            self.assertEqual(detail['source_path'],folder);self.assertEqual(len(detail['links']),1)
+            self.assertEqual(detail['alias'],'FOLDER QA PERSON')
+            with app.connection() as db:before=db.execute('SELECT COUNT(*) FROM contacts').fetchone()[0]
+            status,again,_=admin.request('/api/crm/create',payload)
+            self.assertEqual(status,200);self.assertEqual(again['id'],cid);self.assertTrue(again['existing'])
+            with app.connection() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM contacts').fetchone()[0],before)
+            self.assertEqual(admin.request('/api/crm/create',{'name':'','source_path':'','tax_year':2025})[0],400)
+
+    def test_customer_trash_permissions_and_old_workspace_access(self):
+        admin=self.browser('admin');editor=self.browser('alice');reader=self.browser('reader')
+        status,result,_=admin.request('/api/crm/create',{'name':'HTTP Trash QA','tax_year':2025})
+        self.assertEqual(status,200);cid=result['id']
+        status,preview,_=admin.request('/api/crm/delete-preview?id='+str(cid)+'&scope=year')
+        self.assertEqual(status,200)
+        payload={**preview,'confirmed_name':'HTTP Trash QA'}
+        for user in [reader,editor]:
+            self.assertEqual(user.request('/api/crm/delete',payload)[0],403)
+            self.assertEqual(user.request('/api/crm/trash')[0],403)
+        self.assertEqual(admin.request('/api/crm/delete',payload)[0],200)
+        self.assertEqual(admin.request('/api/workspace?client_id='+str(cid))[0],409)
+        self.assertNotIn(cid,[r['id'] for r in admin.request('/api/clients')[1]])
+        trash=admin.request('/api/crm/trash')[1]
+        batch=next(t['batch'] for t in trash if t['name']=='HTTP Trash QA')
+        self.assertEqual(editor.request('/api/crm/restore',{'batch':batch})[0],403)
+        self.assertEqual(admin.request('/api/crm/restore',{'batch':batch})[0],200)
+        self.assertEqual(admin.request('/api/workspace?client_id='+str(cid))[0],200)
+
+    def test_crm_permissions_conflicts_and_workspace_entry(self):
+        editor=Browser(self.url);self.assertEqual(editor.login('alice')[0],200)
+        status,created,_=editor.request('/api/crm/create',{'name':'CRM API QA','tax_year':2025})
+        self.assertEqual(status,200)
+        cid=created['id']
+        status,detail,_=editor.request('/api/crm?id='+str(cid));self.assertEqual(status,200)
+        payload={**detail,'client_id':cid,'stage':'待复核','fee':'250','paid':'50'}
+        self.assertEqual(editor.request('/api/crm/save',payload)[0],200)
+        self.assertEqual(editor.request('/api/crm/save',payload)[0],409)
+        self.assertEqual(editor.request('/api/crm/link',{'client_id':cid,'label':'ProSeries','kind':'proseries','path':r'D:\QA\client.25i'})[0],200)
+        reader=Browser(self.url);self.assertEqual(reader.login('reader')[0],200)
+        self.assertEqual(editor.request('/api/crm/assignees',{'name':'jacqueline'})[0],200)
+        self.assertEqual(reader.request('/api/crm/assignees')[0],200)
+        self.assertEqual(reader.request('/api/crm/assignees',{'name':'blocked'})[0],403)
+        self.assertEqual(reader.request('/api/crm')[0],200)
+        for route in ['create','save','link']:
+            self.assertEqual(reader.request('/api/crm/'+route,payload)[0],403)
+        status,html,_=editor.request('/workspace?client_id='+str(cid))
+        self.assertEqual(status,200);self.assertIn('返回客户总表'.encode(),html)
+        status,html,_=editor.request('/')
+        self.assertEqual(status,200);self.assertIn('客户总表'.encode(),html)
+
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()

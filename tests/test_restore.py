@@ -1,7 +1,8 @@
 import hashlib,json,sqlite3,sys,tempfile,unittest,zipfile
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-import app,fitz
+import app
+import pymupdf as fitz
 from restore_backup import restore
 
 class RestoreTests(unittest.TestCase):

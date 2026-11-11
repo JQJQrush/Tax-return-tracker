@@ -1,5 +1,5 @@
 """Entirely synthetic documents for installation and tester onboarding."""
-import fitz
+import pymupdf as fitz
 
 
 def demo_documents():

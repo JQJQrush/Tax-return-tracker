@@ -12,9 +12,9 @@ def report():
     lines=['TaxPrep Local v0.4 安装诊断','操作系统：'+platform.system()+' '+platform.release(),
            'Python：'+platform.python_version(),'Python 版本符合要求：'+str(sys.version_info>=(3,10)),
            '图形恢复模块 tkinter：'+('已安装' if importlib.util.find_spec('tkinter') else '未安装，可使用命令行恢复')]
-    if importlib.util.find_spec('fitz'):
-        import fitz
-        lines.append('PyMuPDF：'+fitz.VersionBind)
+    if importlib.util.find_spec('pymupdf'):
+        import pymupdf
+        lines.append('PyMuPDF：'+pymupdf.VersionBind)
     else:lines.append('PyMuPDF：未安装，请先运行 run_windows.bat')
     engine=os.environ.get('TESSERACT_CMD') or shutil.which('tesseract')
     fallback=Path(os.environ.get('ProgramFiles',r'C:\Program Files'))/'Tesseract-OCR'/'tesseract.exe'
