@@ -1,5 +1,13 @@
 # Tax Return Tracker
 
+Tax Return Tracker is an internal document review workspace for tax preparation teams. It organizes source documents by client and tax year, tracks missing items, and lets reviewers compare extracted amounts against the original forms before recording a decision. Assignments, deadlines, and review notes help staff hand off open work.
+
+My contribution focused on defining workflow requirements, configuring the process, and testing scenarios for document intake, missing items, and manual review.
+
+- [Workflow diagram](#从文件夹路径到核对) shows how source files move from intake to review.
+- [Testing notes](docs/testing/TESTING.md) describe the features and scenarios covered.
+- [Local user guide](docs/guides/LOCAL_GUIDE.md) explains how to try the workflow with synthetic records or a separate test folder.
+
 Tax Return Tracker 是办公室内网使用的报税资料工作台。员工通过浏览器登录，按客户和税年管理资料、跟进缺件，并对照原件核对金额。应用、识别任务和客户资料集中保存在办公室服务器。
 
 ## 从文件夹路径到核对
